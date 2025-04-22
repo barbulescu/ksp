@@ -24,4 +24,6 @@ fun main() {
     
     // Call the generated function
     println("Generated function: ${sample.sayHello()}")
+
+    sample.printName()
 }
