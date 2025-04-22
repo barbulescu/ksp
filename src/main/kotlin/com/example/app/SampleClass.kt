@@ -6,7 +6,8 @@ import com.example.annotations.GenerateFunction
  * A sample class that uses the GenerateFunction annotation.
  */
 @GenerateFunction(name = "sayHello", returnType = "String")
-class SampleClass {
+class SampleClass(val name: String) {
+
     fun regularFunction(): String {
         return "This is a regular function"
     }
@@ -16,7 +17,7 @@ class SampleClass {
  * Main function to demonstrate the generated code.
  */
 fun main() {
-    val sample = SampleClass()
+    val sample = SampleClass("KSP")
     
     // Call the regular function
     println("Regular function: ${sample.regularFunction()}")
