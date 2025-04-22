@@ -13,7 +13,6 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation(project(":annotations"))
 
     // Use the ksp configuration
     add("ksp", project(":processor"))

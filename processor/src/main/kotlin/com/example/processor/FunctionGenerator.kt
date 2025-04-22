@@ -1,6 +1,5 @@
 package com.example.processor
 
-import com.example.annotations.GenerateFunction
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
@@ -10,7 +9,7 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         // Find all classes annotated with @GenerateFunction
-        val symbols = resolver.getSymbolsWithAnnotation(GenerateFunction::class.qualifiedName!!)
+        val symbols = resolver.getSymbolsWithAnnotation("com.example.annotations.GenerateFunction")
         val unprocessed = symbols.filter { !it.validate() }.toList()
 
         symbols

@@ -3,5 +3,4 @@ plugins {
 }
 rootProject.name = "ksp"
 
-include("annotations")
 include("processor")
