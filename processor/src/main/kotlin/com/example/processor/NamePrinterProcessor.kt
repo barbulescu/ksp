@@ -53,11 +53,8 @@ class NamePrinterProcessor(private val codeGenerator: CodeGenerator, private val
                  * Generated printName method for $className
                  */
                 fun ${className}.printName() {
-                    // Access the name property using reflection
-                    val nameProperty = this::class.java.getDeclaredField("name")
-                    nameProperty.isAccessible = true
-                    val nameValue = nameProperty.get(this)
-                    println("Name property: " + nameValue)
+                    // Access the name property directly
+                    println("Name property: " + this.name)
                 }
                 """.trimIndent()
             )
