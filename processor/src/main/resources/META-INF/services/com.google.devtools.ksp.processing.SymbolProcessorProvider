@@ -1,2 +1,1 @@
-com.example.processor.FunctionGeneratorProvider
-com.example.processor.NamePrinterProcessorProvider
+com.example.processor.MaskingGeneratorProvider

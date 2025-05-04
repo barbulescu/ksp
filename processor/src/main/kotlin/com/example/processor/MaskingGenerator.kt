@@ -9,17 +9,20 @@ import java.io.OutputStream
 class FunctionGenerator(private val codeGenerator: CodeGenerator, private val logger: KSPLogger) : SymbolProcessor {
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        val symbols = resolver.getSymbolsWithAnnotation("com.example.annotations.GenerateFunction")
+        val modelInterface = resolver.getClassDeclarationByName(
+            resolver.getKSNameFromString("com.example.app.Model")
+        ) ?: return emptyList()
 
-        symbols
-            .filter { it is KSClassDeclaration }
-            .filter { it.validate() }
-            .filterIsInstance(KSClassDeclaration::class.java)
-            .forEach { processAnnotatedClass(it) }
+        val modelClasses = resolver.getAllFiles()
+            .flatMap { it.declarations }
+            .filterIsInstance<KSClassDeclaration>()
+            .filter { classDeclaration -> classDeclaration.implements(modelInterface) }
 
-        return symbols
-            .filterNot { it.validate() }
-            .toList()
+        modelClasses.forEach { modelClass ->
+            logger.info("Found class implementing Model: ${modelClass.simpleName.asString()}")
+        }
+
+        return emptyList()
     }
 
     private fun processAnnotatedClass(classDeclaration: KSClassDeclaration) {
@@ -82,8 +85,12 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
     }
 }
 
-class FunctionGeneratorProvider : SymbolProcessorProvider {
-    override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
-        return FunctionGenerator(environment.codeGenerator, environment.logger)
-    }
+private fun KSClassDeclaration.implements(targetInterface: KSClassDeclaration): Boolean = superTypes.any {
+    it.resolve().declaration == targetInterface
+}
+
+
+class MaskingGeneratorProvider : SymbolProcessorProvider {
+    override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor =
+        FunctionGenerator(environment.codeGenerator, environment.logger)
 }

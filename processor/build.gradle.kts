@@ -5,8 +5,8 @@ plugins {
 dependencies {
     implementation(kotlin("stdlib"))
 
-    implementation("com.google.devtools.ksp:symbol-processing-api:1.9.10-1.0.13")
-    
+    implementation("com.google.devtools.ksp:symbol-processing-api:2.1.20-2.0.0")
+
     // For testing if needed
     testImplementation(kotlin("test"))
 }
