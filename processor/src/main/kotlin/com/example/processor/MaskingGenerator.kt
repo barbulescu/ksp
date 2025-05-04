@@ -7,13 +7,11 @@ import com.google.devtools.ksp.symbol.KSClassDeclaration
 class FunctionGenerator(private val codeGenerator: CodeGenerator, private val logger: KSPLogger) : SymbolProcessor {
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        // Find all classes that implement Model or have masked properties
         val classesToProcess = resolver.getAllFiles()
             .flatMap { it.declarations }
             .filterIsInstance<KSClassDeclaration>()
             .filter { it.isModel() || it.hasMaskedProperties() }
 
-        // Process Model implementations
         classesToProcess
             .filter { it.isModel() }
             .onEach { logger.info("Found class implementing Model: ${it.simpleName.asString()}") }

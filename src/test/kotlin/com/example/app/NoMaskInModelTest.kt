@@ -4,7 +4,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 data class A2(
-    @Mask
     val value: String,
     val b: B2,
 ) : Model
@@ -23,7 +22,6 @@ class NoMaskingInModelTest {
         )
 
         val masked = a.mask()
-        assertThat(masked.value).isEmpty()
         assertThat(masked.b.value).isEmpty()
     }
 }
