@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     kotlin("jvm") version "2.1.20"
     id("com.google.devtools.ksp") version "2.1.20-2.0.0"
@@ -43,8 +45,8 @@ tasks.named<JavaExec>("run") {
 
 // Configure Kotlin and Java compilation
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    kotlinOptions {
-        jvmTarget = "17"
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -59,8 +61,8 @@ subprojects {
     }
 
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            jvmTarget = "17"
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
         }
     }
 
@@ -70,14 +72,6 @@ subprojects {
     }
 }
 
-tasks.named("clean").configure {
-    delete(
-        fileTree("build/generated/ksp/main/kotlin"),
-        fileTree("build/generated/ksp/test/kotlin")
-    )
-}
-
-// Configure test task to use JUnit 5
 tasks.withType<Test> {
     useJUnitPlatform()
 }

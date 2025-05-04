@@ -8,6 +8,8 @@ import com.google.devtools.ksp.symbol.KSPropertyDeclaration
 class FunctionGenerator(private val codeGenerator: CodeGenerator, private val logger: KSPLogger) : SymbolProcessor {
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
+        cleanGeneratedFiles()
+
         val modelInterface = resolver.getClassDeclarationByName(
             resolver.getKSNameFromString("com.example.app.Model")
         ) ?: return emptyList()
@@ -16,9 +18,10 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
             .flatMap { it.declarations }
             .filterIsInstance<KSClassDeclaration>()
             .filter { classDeclaration -> classDeclaration.implements(modelInterface) }
+            .distinctBy { it.simpleName.asString() }
 
         modelClasses.forEach { modelClass ->
-            logger.info("Found class implementing Model: ${modelClass.simpleName.asString()}")
+            logger.info("Found class implementing Model 11: ${modelClass.simpleName.asString()}")
 
             // Collect all properties with @Mask annotation
             val maskedProperties = mutableListOf<MaskedProperty>()
@@ -153,9 +156,8 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
                     writer.write("}\n")
                 }
             }
-        } catch (e: kotlin.io.FileAlreadyExistsException) {
-            logger.warn("File $fileName already exists in package $packageName. Skipping generation.")
-            // Optionally, you can return early or take alternative actions
+        } catch (e: FileAlreadyExistsException) {
+            logger.info("${e.message} already exists, skipping generation.")
         }
     }
 
@@ -207,6 +209,10 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
         }
 
         writer.write("        ),\n")
+    }
+
+    private fun cleanGeneratedFiles() {
+        codeGenerator.generatedFile.forEach { file -> file.deleteRecursively() }
     }
 }
 

@@ -33,3 +33,5 @@ data class C1(
 )
 
 data class D1(val d1: String)
+
+//data class Inner(@Mask val value: String)
