@@ -3,45 +3,29 @@ package com.example.processor
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSPropertyDeclaration
 
 class FunctionGenerator(private val codeGenerator: CodeGenerator, private val logger: KSPLogger) : SymbolProcessor {
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        cleanGeneratedFiles()
-
-        // Find all classes with @Mask annotation on any property
-        val classesWithMaskedProperties = resolver.getAllFiles()
+        // Process each class with masked properties
+        resolver.getAllFiles()
             .flatMap { it.declarations }
             .filterIsInstance<KSClassDeclaration>()
-            .filter { classDeclaration ->
-                classDeclaration.getAllProperties().any { property ->
-                    property.annotations.any { it.shortName.asString() == "Mask" }
+            .filter { it.hasMaskedProperties() }
+            .onEach { logger.info("Found class with @Mask annotation: ${it.simpleName.asString()}") }
+            .forEach { classDeclaration ->
+                // Collect all properties with @Mask annotation
+                val maskedProperties = mutableListOf<MaskedProperty>()
+                collectMaskedProperties(classDeclaration, resolver, "", maskedProperties)
+
+                // Generate mask function for this class
+                if (maskedProperties.isNotEmpty()) {
+                    generateMaskFunction(classDeclaration, maskedProperties)
                 }
             }
-            .distinctBy { it.simpleName.asString() }
-
-        // Process each class with masked properties
-        classesWithMaskedProperties.forEach { classDeclaration ->
-            logger.info("Found class with @Mask annotation: ${classDeclaration.simpleName.asString()}")
-
-            // Collect all properties with @Mask annotation
-            val maskedProperties = mutableListOf<MaskedProperty>()
-            collectMaskedProperties(classDeclaration, resolver, "", maskedProperties)
-
-            // Generate mask function for this class
-            if (maskedProperties.isNotEmpty()) {
-                generateMaskFunction(classDeclaration, maskedProperties)
-            }
-        }
 
         return emptyList()
     }
-
-    private data class MaskedProperty(
-        val propertyPath: String,
-        val property: KSPropertyDeclaration,
-    )
 
     private fun collectMaskedProperties(
         classDeclaration: KSClassDeclaration,
@@ -50,15 +34,11 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
         maskedProperties: MutableList<MaskedProperty>,
     ) {
         classDeclaration.getAllProperties().forEach { property ->
-            // Check if property has Mask annotation
-            val hasMaskAnnotation = property.annotations.any {
-                it.shortName.asString() == "Mask"
-            }
 
             val currentPath = if (propertyPath.isEmpty()) property.simpleName.asString()
             else "$propertyPath.${property.simpleName.asString()}"
 
-            if (hasMaskAnnotation) {
+            if (property.isMasked()) {
                 logger.info("Found property with @Mask annotation: $currentPath")
                 maskedProperties.add(MaskedProperty(currentPath, property))
             }
@@ -236,15 +216,9 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
         writer.write("        ),\n")
     }
 
-    private fun cleanGeneratedFiles() {
-        codeGenerator.generatedFile.forEach { file -> file.deleteRecursively() }
-    }
 }
 
-private fun KSClassDeclaration.implements(targetInterface: KSClassDeclaration): Boolean = superTypes.any {
-    it.resolve().declaration == targetInterface
-}
-
+private fun KSClassDeclaration.hasMaskedProperties(): Boolean = getAllProperties().any { it.isMasked() }
 
 class MaskingGeneratorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor =

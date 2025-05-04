@@ -1,13 +1,30 @@
 package com.example.app
 
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 
+data class Inner(@Mask val value: String) : Model
 
+data class A1(
+    @Mask
+    val a1: String,
+    val b1: B1,
+    val d1: D1,
+) : Model
+
+data class B1(
+    val b1: String,
+    val c1: C1,
+)
+
+data class C1(
+    @Mask
+    val c1: String,
+)
+
+data class D1(val d1: String)
 
 class MaskTest {
-
     @Test
     fun `handle inner classes`() {
         val inner = Inner("value")
