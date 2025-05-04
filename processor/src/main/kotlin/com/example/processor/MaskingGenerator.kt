@@ -7,11 +7,30 @@ import com.google.devtools.ksp.symbol.KSClassDeclaration
 class FunctionGenerator(private val codeGenerator: CodeGenerator, private val logger: KSPLogger) : SymbolProcessor {
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        // Process each class with masked properties
-        resolver.getAllFiles()
+        // Find all classes that implement Model or have masked properties
+        val classesToProcess = resolver.getAllFiles()
             .flatMap { it.declarations }
             .filterIsInstance<KSClassDeclaration>()
-            .filter { it.hasMaskedProperties() }
+            .filter { it.isModel() || it.hasMaskedProperties() }
+
+        // Process Model implementations
+        classesToProcess
+            .filter { it.isModel() }
+            .onEach { logger.info("Found class implementing Model: ${it.simpleName.asString()}") }
+            .forEach { classDeclaration ->
+                // Collect all properties with @Mask annotation
+                val maskedProperties = mutableListOf<MaskedProperty>()
+                collectMaskedProperties(classDeclaration, resolver, "", maskedProperties)
+
+                // Generate mask function for this class only if it has masked properties
+                if (maskedProperties.isNotEmpty()) {
+                    generateMaskFunction(classDeclaration, maskedProperties)
+                }
+            }
+
+        // Process classes with masked properties that don't implement Model
+        classesToProcess
+            .filter { it.hasMaskedProperties() && !it.isModel() }
             .onEach { logger.info("Found class with @Mask annotation: ${it.simpleName.asString()}") }
             .forEach { classDeclaration ->
                 // Collect all properties with @Mask annotation
@@ -94,11 +113,16 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
                         val propertyType = property.type.resolve()
                         val propertyTypeDeclaration = propertyType.declaration
 
-                        // Check if this property itself has @Mask annotation
+                        // Check if this property itself has @Mask annotation or if the class implements Model
                         val hasMaskAnnotation = property.annotations.any { it.shortName.asString() == "Mask" }
+                        val isModelImplementation = classDeclaration.isModel()
+                        val isStringProperty = propertyType.toString().contains("kotlin.String")
 
-                        if (hasMaskAnnotation) {
-                            // If property has @Mask annotation, set it to empty string
+                        logger.info("Property: $propertyName, hasMaskAnnotation: $hasMaskAnnotation, isModelImplementation: $isModelImplementation, isStringProperty: $isStringProperty, propertyType: ${propertyType.toString()}")
+
+                        if (hasMaskAnnotation || (isModelImplementation && isStringProperty)) {
+                            // If property has @Mask annotation or the class implements Model and property is a String, set it to empty string
+                            logger.info("Masking property: $propertyName")
                             writer.write("        $propertyName = \"\",\n")
                         } else if (propertyTypeDeclaration is KSClassDeclaration &&
                             propertyTypeDeclaration.qualifiedName?.asString()?.startsWith("kotlin.") != true
@@ -149,12 +173,10 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
         propertyTypeDeclaration: KSClassDeclaration,
         nestedMaskedProperties: List<MaskedProperty>,
     ) {
-        // Check if this class has its own mask function
-        val hasOwnMaskFunction = propertyTypeDeclaration.getAllProperties().any { property ->
-            property.annotations.any { it.shortName.asString() == "Mask" }
-        }
+        // Check if this class implements Model
+        val implementsModel = propertyTypeDeclaration.isModel()
 
-        if (hasOwnMaskFunction) {
+        if (implementsModel) {
             // If the class has its own mask function, use it
             writer.write("        $propertyName = $propertyName.mask(),\n")
             return
@@ -189,12 +211,11 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
                 }
 
                 if (furtherNestedMaskedProperties.isNotEmpty() && propertyTypeDecl is KSClassDeclaration) {
-                    // Check if this nested property's class has its own mask function
-                    val nestedHasOwnMaskFunction = propertyTypeDecl.getAllProperties().any { prop ->
-                        prop.annotations.any { it.shortName.asString() == "Mask" }
-                    }
+                    // Check if this nested property's class implements Model or has masked properties
+                    val nestedImplementsModel = propertyTypeDecl.isModel()
+                    val nestedHasMaskedProperties = propertyTypeDecl.hasMaskedProperties()
 
-                    if (nestedHasOwnMaskFunction) {
+                    if (nestedImplementsModel || nestedHasMaskedProperties) {
                         // If the nested class has its own mask function, use it
                         writer.write("            $nestedPropertyName = $propertyName.$nestedPropertyName.mask()")
                     } else {
