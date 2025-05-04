@@ -3,8 +3,7 @@ package com.example.processor
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.validate
-import java.io.OutputStream
+import com.google.devtools.ksp.symbol.KSPropertyDeclaration
 
 class FunctionGenerator(private val codeGenerator: CodeGenerator, private val logger: KSPLogger) : SymbolProcessor {
 
@@ -20,68 +19,194 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
 
         modelClasses.forEach { modelClass ->
             logger.info("Found class implementing Model: ${modelClass.simpleName.asString()}")
+
+            // Collect all properties with @Mask annotation
+            val maskedProperties = mutableListOf<MaskedProperty>()
+            collectMaskedProperties(modelClass, resolver, "", maskedProperties)
+
+            // Generate mask function for this model class
+            if (maskedProperties.isNotEmpty()) {
+                generateMaskFunction(modelClass, maskedProperties)
+            }
         }
 
         return emptyList()
     }
 
-    private fun processAnnotatedClass(classDeclaration: KSClassDeclaration) {
-        logger.info("symbol $classDeclaration")
+    private data class MaskedProperty(
+        val propertyPath: String,
+        val property: KSPropertyDeclaration,
+    )
 
-        val annotation = classDeclaration.annotations
-            .find { it.shortName.asString() == "GenerateFunction" }
-            ?: return
-
-        logger.info("annotation: $annotation", classDeclaration)
-
-        val functionName = annotation.arguments
-            .find { it.name?.asString() == "name" }?.value as? String
-            ?: run {
-                logger.error("Function name must be provided", classDeclaration)
-                return
+    private fun collectMaskedProperties(
+        classDeclaration: KSClassDeclaration,
+        resolver: Resolver,
+        propertyPath: String,
+        maskedProperties: MutableList<MaskedProperty>,
+    ) {
+        classDeclaration.getAllProperties().forEach { property ->
+            // Check if property has Mask annotation
+            val hasMaskAnnotation = property.annotations.any {
+                it.shortName.asString() == "Mask"
             }
 
-        logger.info("function: $functionName")
+            val currentPath = if (propertyPath.isEmpty()) property.simpleName.asString()
+            else "$propertyPath.${property.simpleName.asString()}"
 
-        val returnType = annotation.arguments
-            .find { it.name?.asString() == "returnType" }
-            ?.value as? String
-            ?: "String"
-        logger.info("returnType: $returnType")
+            if (hasMaskAnnotation) {
+                logger.info("Found property with @Mask annotation: $currentPath")
+                maskedProperties.add(MaskedProperty(currentPath, property))
+            }
 
-        val packageName = classDeclaration.packageName.asString()
-        val className = classDeclaration.simpleName.asString()
-        classDeclaration
+            // Get property type
+            val propertyType = property.type.resolve()
+            val propertyTypeDeclaration = propertyType.declaration
 
-        val fileName = "${className}Generated"
-        val fileSpec = Dependencies(aggregating = false, classDeclaration.containingFile!!)
-
-        codeGenerator.createNewFile(fileSpec, packageName, fileName)
-            .use { outputStream -> outputStream.generateFile(packageName, className, functionName, returnType) }
-
-        logger.info("Generated function '$functionName' for class '$className'", classDeclaration)
+            // If property type is a class (not a primitive), process it recursively
+            if (propertyTypeDeclaration is KSClassDeclaration &&
+                propertyTypeDeclaration.qualifiedName?.asString()?.startsWith("kotlin.") != true
+            ) {
+                collectMaskedProperties(
+                    propertyTypeDeclaration,
+                    resolver,
+                    currentPath,
+                    maskedProperties
+                )
+            }
+        }
     }
 
-    private fun OutputStream.generateFile(
-        packageName: String,
-        className: String,
-        functionName: String,
-        returnType: String,
+    private fun generateMaskFunction(
+        classDeclaration: KSClassDeclaration,
+        maskedProperties: List<MaskedProperty>,
     ) {
-        writer().use { writer ->
-            writer.write(
-                """
-                        package $packageName
-                        
-                        /**
-                         * Generated function for $className
-                         */
-                        fun ${className}.$functionName(): $returnType {
-                            return "Hello from generated function!"
-                        }
-                        """.trimIndent()
+        val className = classDeclaration.simpleName.asString()
+        logger.info("Generating mask function for $className")
+        val packageName = classDeclaration.packageName.asString()
+        val fileName = "${className}Mask"
+
+        try {
+            val file = codeGenerator.createNewFile(
+                dependencies = Dependencies(false, classDeclaration.containingFile!!),
+                packageName = packageName,
+                fileName = fileName
             )
+
+            file.use { outputStream ->
+                outputStream.writer().use { writer ->
+                    writer.write("package $packageName\n\n")
+
+                    // Write the mask function
+                    writer.write("fun ${className}.mask(): ${className} {\n")
+                    writer.write("    return this.copy(\n")
+
+                    // Get direct properties of the class
+                    val directProperties = classDeclaration.getAllProperties().toList()
+
+                    // For each direct property, check if it or any of its nested properties need masking
+                    directProperties.forEachIndexed { index, property ->
+                        val propertyName = property.simpleName.asString()
+                        val propertyType = property.type.resolve()
+                        val propertyTypeDeclaration = propertyType.declaration
+
+                        // Check if this property itself has @Mask annotation
+                        val hasMaskAnnotation = property.annotations.any { it.shortName.asString() == "Mask" }
+
+                        if (hasMaskAnnotation) {
+                            // If property has @Mask annotation, set it to empty string
+                            writer.write("        $propertyName = \"\",\n")
+                        } else if (propertyTypeDeclaration is KSClassDeclaration &&
+                            propertyTypeDeclaration.qualifiedName?.asString()?.startsWith("kotlin.") != true
+                        ) {
+                            // Check if any nested properties of this property need masking
+                            val nestedMaskedProperties = maskedProperties.filter {
+                                it.propertyPath.startsWith("$propertyName.")
+                            }
+
+                            if (nestedMaskedProperties.isNotEmpty()) {
+                                // Generate nested masking code
+                                generateNestedMaskingCode(
+                                    writer,
+                                    propertyName,
+                                    propertyTypeDeclaration,
+                                    nestedMaskedProperties
+                                )
+                            } else {
+                                // If no nested properties need masking, keep the original value
+                                writer.write("        $propertyName = $propertyName")
+                                if (index < directProperties.size - 1) {
+                                    writer.write(",")
+                                }
+                                writer.write("\n")
+                            }
+                        } else {
+                            // For primitive properties without @Mask, keep the original value
+                            writer.write("        $propertyName = $propertyName")
+                            if (index < directProperties.size - 1) {
+                                writer.write(",")
+                            }
+                            writer.write("\n")
+                        }
+                    }
+
+                    writer.write("    )\n")
+                    writer.write("}\n")
+                }
+            }
+        } catch (e: kotlin.io.FileAlreadyExistsException) {
+            logger.warn("File $fileName already exists in package $packageName. Skipping generation.")
+            // Optionally, you can return early or take alternative actions
         }
+    }
+
+    private fun generateNestedMaskingCode(
+        writer: java.io.Writer,
+        propertyName: String,
+        propertyTypeDeclaration: KSClassDeclaration,
+        nestedMaskedProperties: List<MaskedProperty>,
+    ) {
+        // Create a deep copy of the nested object with masked properties
+        writer.write("        $propertyName = $propertyName.copy(\n")
+
+        // Get all direct properties of the nested class
+        val nestedProperties = propertyTypeDeclaration.getAllProperties().toList()
+
+        nestedProperties.forEachIndexed { index, nestedProperty ->
+            val nestedPropertyName = nestedProperty.simpleName.asString()
+            val nestedPropertyPath = "$propertyName.$nestedPropertyName"
+
+            // Check if this nested property has @Mask annotation
+            val isMasked = nestedMaskedProperties.any {
+                it.propertyPath == nestedPropertyPath
+            }
+
+            if (isMasked) {
+                // If nested property has @Mask annotation, set it to empty string
+                writer.write("            $nestedPropertyName = \"\"")
+            } else {
+                // Check if this nested property has further nested properties that need masking
+                val furtherNestedMaskedProperties = nestedMaskedProperties.filter {
+                    it.propertyPath.startsWith("$nestedPropertyPath.")
+                }
+
+                if (furtherNestedMaskedProperties.isNotEmpty()) {
+                    // If there are further nested properties to mask, we need to handle them recursively
+                    // For simplicity, we'll just keep the original value here
+                    // In a real implementation, you might want to generate recursive masking code
+                    writer.write("            $nestedPropertyName = $propertyName.$nestedPropertyName")
+                } else {
+                    // If no further nested properties need masking, keep the original value
+                    writer.write("            $nestedPropertyName = $propertyName.$nestedPropertyName")
+                }
+            }
+
+            if (index < nestedProperties.size - 1) {
+                writer.write(",")
+            }
+            writer.write("\n")
+        }
+
+        writer.write("        ),\n")
     }
 }
 

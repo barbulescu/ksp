@@ -9,14 +9,17 @@ fun main() {
                 c1 = "c1",
             ),
         ),
+        d1 = D1(d1 = "d1"),
     )
 
     println(a1)
 }
 
 data class A1(
+    @Mask
     val a1: String,
     val b1: B1,
+    val d1: D1,
 ) : Model
 
 data class B1(
@@ -28,3 +31,5 @@ data class C1(
     @Mask
     val c1: String,
 )
+
+data class D1(val d1: String)

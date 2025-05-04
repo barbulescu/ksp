@@ -17,7 +17,13 @@ dependencies {
     // Use the ksp configuration
     add("ksp", project(":processor"))
 
-    testImplementation(kotlin("test"))
+    // JUnit 5
+    testImplementation(platform("org.junit:junit-bom:5.10.1"))
+    testImplementation("org.junit.jupiter:junit-jupiter-api")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
+
+    // AssertJ
+    testImplementation("org.assertj:assertj-core:3.24.2")
 }
 
 // Configure KSP
@@ -32,7 +38,7 @@ kotlin {
 
 // Configure application
 tasks.named<JavaExec>("run") {
-    mainClass.set("com.example.app.SampleClassKt")
+    mainClass.set("com.example.app.MainKt")
 }
 
 // Configure Kotlin and Java compilation
@@ -62,4 +68,16 @@ subprojects {
         sourceCompatibility = JavaVersion.VERSION_17.toString()
         targetCompatibility = JavaVersion.VERSION_17.toString()
     }
+}
+
+tasks.named("clean").configure {
+    delete(
+        fileTree("build/generated/ksp/main/kotlin"),
+        fileTree("build/generated/ksp/test/kotlin")
+    )
+}
+
+// Configure test task to use JUnit 5
+tasks.withType<Test> {
+    useJUnitPlatform()
 }
