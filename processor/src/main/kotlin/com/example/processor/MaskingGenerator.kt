@@ -106,7 +106,26 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
                 append("    return this.copy(\n")
 
                 // For each direct property, check if it or any of its nested properties need masking
-                directProperties.forEachIndexed { index, property ->
+                val propertiesToMask = directProperties.filter { property ->
+                    val propertyName = property.simpleName.asString()
+                    val propertyType = property.type.resolve()
+                    val propertyTypeDeclaration = propertyType.declaration
+
+                    // Check if this property itself has @Mask annotation or if the class implements Model
+                    val hasMaskAnnotation = property.annotations.any { it.shortName.asString() == "Mask" }
+                    val isModelImplementation = classDeclaration.isModel()
+                    val isStringProperty = propertyType.toString().contains("kotlin.String")
+
+                    // Check if any nested properties of this property need masking
+                    val nestedMaskedProperties = maskedProperties.filter {
+                        it.propertyPath.startsWith("$propertyName.")
+                    }
+
+                    // Include property if it needs masking or has nested properties that need masking
+                    hasMaskAnnotation || (isModelImplementation && isStringProperty) || nestedMaskedProperties.isNotEmpty()
+                }
+
+                propertiesToMask.forEachIndexed { index, property ->
                     val propertyName = property.simpleName.asString()
                     val propertyType = property.type.resolve()
                     val propertyTypeDeclaration = propertyType.declaration
@@ -137,21 +156,7 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
                                 propertyTypeDeclaration,
                                 nestedMaskedProperties
                             ))
-                        } else {
-                            // If no nested properties need masking, keep the original value
-                            append("        $propertyName = $propertyName")
-                            if (index < directProperties.size - 1) {
-                                append(",")
-                            }
-                            append("\n")
                         }
-                    } else {
-                        // For primitive properties without @Mask, keep the original value
-                        append("        $propertyName = $propertyName")
-                        if (index < directProperties.size - 1) {
-                            append(",")
-                        }
-                        append("\n")
                     }
                 }
 
@@ -189,7 +194,30 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
             // Get all direct properties of the nested class
             val nestedProperties = propertyTypeDeclaration.getAllProperties().toList()
 
-            nestedProperties.forEachIndexed { index, nestedProperty ->
+            // Filter to only include properties that need masking
+            val propertiesToMask = nestedProperties.filter { nestedProperty ->
+                val nestedPropertyName = nestedProperty.simpleName.asString()
+                val nestedPropertyPath = "$propertyName.$nestedPropertyName"
+
+                // Check if this nested property has @Mask annotation
+                val isMasked = nestedMaskedProperties.any {
+                    it.propertyPath == nestedPropertyPath
+                }
+
+                // Get property type
+                val propertyType = nestedProperty.type.resolve()
+                val propertyTypeDecl = propertyType.declaration
+
+                // Check if this nested property has further nested properties that need masking
+                val furtherNestedMaskedProperties = nestedMaskedProperties.filter {
+                    it.propertyPath.startsWith("$nestedPropertyPath.")
+                }
+
+                // Include property if it needs masking or has nested properties that need masking
+                isMasked || furtherNestedMaskedProperties.isNotEmpty()
+            }
+
+            propertiesToMask.forEachIndexed { index, nestedProperty ->
                 val nestedPropertyName = nestedProperty.simpleName.asString()
                 val nestedPropertyPath = "$propertyName.$nestedPropertyName"
 
@@ -219,17 +247,11 @@ class FunctionGenerator(private val codeGenerator: CodeGenerator, private val lo
                         if (nestedImplementsModel || nestedHasMaskedProperties) {
                             // If the nested class has its own mask function, use it
                             append("            $nestedPropertyName = $propertyName.$nestedPropertyName.mask()")
-                        } else {
-                            // Otherwise, keep the original value
-                            append("            $nestedPropertyName = $propertyName.$nestedPropertyName")
                         }
-                    } else {
-                        // If no further nested properties need masking, keep the original value
-                        append("            $nestedPropertyName = $propertyName.$nestedPropertyName")
                     }
                 }
 
-                if (index < nestedProperties.size - 1) {
+                if (index < propertiesToMask.size - 1) {
                     append(",")
                 }
                 append("\n")
